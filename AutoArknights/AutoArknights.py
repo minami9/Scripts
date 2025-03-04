@@ -13,6 +13,8 @@ import sys
 import chardet
 import socket
 import configparser
+import yagmail
+import base64
 
 from PIL import Image
 from logging.handlers import RotatingFileHandler
@@ -55,6 +57,7 @@ def reboot_adb_server():
         logger.info('Startup adb server successfully.')
         return True
     logger.info('Startup adb server failed, ' + result.stdout + ',' + result.stderr)
+    go_to_exit(1)
     exit(1)
     return False
 
@@ -94,6 +97,7 @@ def reboot_mumu_simulator():
     result = open_mumu_simulator(simulator_path)
     if not result:
         print("Failed to starup mumu simulator.")
+        go_to_exit(1)
         exit(1)
         return
     print("mumu simulator started.")
@@ -185,6 +189,7 @@ def startup_arknights():
     text = pytesseract.image_to_string(app_name_image, lang='chi_sim')
     if ('明日方舟' not in text):
         logger.error('Can\'t find out arknights in MuMu simulator.')
+        go_to_exit(1)
         exit(1)
         return
     logger.info('The Arknights icon has been acquired, let\'s click to start.')
@@ -204,6 +209,7 @@ def startup_arknights():
     print('text of min image: ' + text)
     if ('最小化' not in text):
         logger.error('Can\'t find the minimize button for the helper.')
+        go_to_exit(1)
         exit(1)
         return
     logger.info('The Helper\'s min button has been acquired.')
@@ -244,7 +250,7 @@ def wait_MAA_finished():
                 #logger.info('MAA: Wait MAA finish 1s.')
                 time.sleep(1)
 
-def go_to_sleep():
+def go_to_exit(exit_code):
     # 进入睡眠前，收拾一下
     close_mumu_simulator()
     close_MAA()
@@ -252,8 +258,11 @@ def go_to_sleep():
     adb_path = config.get("adb", "path", fallback="adb")
     subprocess.run([adb_path, 'kill-server'], capture_output=True, text=True)
 
+    # 报告执行状态
+    logger = logging.getLogger()
     logger.info("Entering sleep mode after 10s...")
     time.sleep(10)  # 额外等待 10 秒
+    report(exit_code)
     subprocess.run(['shutdown', '/h', '/f'], capture_output=True, text=True)
 
 
@@ -263,7 +272,40 @@ def wait_network_avaliable():
         logger.info('Network is not avaliable, I\'ll check it after 1s')
         time.sleep(1)
 
+def report(exit_code):
+    config = get_config()
 
+    mail_from = config.get("report", "from", fallback="xxx@163.com")
+    mail_from_passwd = config.get("report", "password", fallback="passwd")
+    print('mail_from: ' + mail_from)
+    print('mail_from_passwd: ' + mail_from_passwd)
+    mail_to = config.get("report", "to", fallback="xxx@163.com")
+    log_path = config.get("arknights", "log_path", fallback=r"D:\script\AutoArknights.log")
+    print('mail_to: ' + mail_to)
+    print('log_path: ' + log_path)
+    yag = yagmail.SMTP(mail_from, mail_from_passwd, host="smtp.163.com", port=587, smtp_ssl=True)
+    # 发送邮件
+    if (exit_code <= 0):
+        yag.send(
+            to=mail_to,                              # 收件人
+            subject="Arknights周期日常运行报告",            # 邮件主题
+            contents="运行成功"  # 邮件正文
+        )
+    else:
+        with open(log_path, "rb") as f:
+            encoded_file = base64.b64encode(f.read()).decode()
+        html_content = f"""
+            <p>运行失败，请检查log附件。</p>
+            <p>你的邮件服务可能拦截了附件。</p>
+            <p>请复制以下 Base64 代码，并在 <a href="https://www.base64decode.net/">Base64 解码网站</a> 粘贴解码。</p>
+            <pre>{encoded_file}</pre>
+            """
+        yag.send(
+            to=mail_to,
+            subject="Arknights周期日常运行报告",
+            contents=html_content
+        )
+    yag.close()
 
 
 if __name__ == '__main__':
@@ -278,5 +320,6 @@ if __name__ == '__main__':
     logger.info('Hello MAA and Byebye!')
     # 至此，把控制权交给MAA了，以后就MAA负责处理后续事宜
     wait_MAA_finished()
-    go_to_sleep()
+    go_to_exit(0)
+
 
