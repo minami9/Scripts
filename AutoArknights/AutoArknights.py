@@ -163,6 +163,10 @@ def adb_swipe(start_x, start_y, end_x, end_y, duration):
         str(end_x) + ',' + str(end_y) + ',' + str(duration))
 
 def setup_logging():
+    # 清空之前的日志文件
+    with open('AutoArknights.log', 'w') as f:
+        f.truncate(0)  # 清空文件内容
+
     # 创建一个 RotatingFileHandler 对象
     handler = RotatingFileHandler('AutoArknights.log', maxBytes=5*1024*1024, backupCount=3, mode='w')
     handler.setLevel(logging.DEBUG)
